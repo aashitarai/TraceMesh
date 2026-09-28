@@ -1,0 +1,6 @@
+{
+  "name": "TraceMesh — Disputed Value Provenance & Financial Crime Investigation Infrastructure",
+  "description": "Value-conserving financial crime provenance engine, ISO 20022 transaction ingestion, commingled funds attribution, multi-bank simulation, cross-institution case management, and cryptographic auditability for enterprise banking networks.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
