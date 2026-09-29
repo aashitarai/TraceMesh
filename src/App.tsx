@@ -1,18 +1,26 @@
 /**
- * TraceMesh Master Application Entry
+ * TraceMesh Master Institutional Application Entry
  * Disputed Value Provenance & Financial Crime Investigation Infrastructure Layer
  */
 
 import React, { useState, useEffect } from 'react';
-import { Header } from './components/Header';
-import { HeroStorySection } from './components/HeroStorySection';
+import { AppShell } from './components/AppShell';
+import { OverviewDashboardView } from './components/OverviewDashboardView';
 import { InvestigatorView } from './components/InvestigatorView';
+import { TransactionsView } from './components/TransactionsView';
+import { AccountsView } from './components/AccountsView';
+import { CasesView } from './components/CasesView';
+import { InstitutionsView } from './components/InstitutionsView';
 import { BankOpsView } from './components/BankOpsView';
 import { RegulatorView } from './components/RegulatorView';
 import { RawInspectorView } from './components/RawInspectorView';
+import { SecurityCenterView } from './components/SecurityCenterView';
 import { RedTeamSandbox } from './components/RedTeamSandbox';
 import { BenchmarkView } from './components/BenchmarkView';
 import { ArchitectureDocsView } from './components/ArchitectureDocsView';
+import { GlobalSearchModal } from './components/GlobalSearchModal';
+import { TransactionDetailModal } from './components/TransactionDetailModal';
+import { AccountProfileModal } from './components/AccountProfileModal';
 import { AiInvestigatorModal } from './components/AiInvestigatorModal';
 import { GuidedTourPlayer } from './components/GuidedTourPlayer';
 import { DataUploadModal } from './components/DataUploadModal';
@@ -22,6 +30,7 @@ import { AUTH_PERSONAS, AuthPersona } from './core/auth/personas';
 import { IngestionResult } from './core/simulator/customDataIngest';
 import {
   Account,
+  AuditEvent,
   EnrichedTransaction,
   InstitutionId,
   InvestigationCase,
@@ -35,37 +44,59 @@ export default function App() {
   const [currentRole, setCurrentRole] = useState<SecurityRole>(currentPersona.role);
   const [selectedInstitution, setSelectedInstitution] = useState<InstitutionId>(currentPersona.institutionId || 'HDFCINBB');
   const [provenanceModel, setProvenanceModel] = useState<ProvenanceModelType>('PROPORTIONAL');
-  const [activeTab, setActiveTab] = useState<string>('investigator');
+  const [activeTab, setActiveTab] = useState<string>('overview');
 
-  // Modals & Tour States
+  // Modals & Interactive Overlays
   const [isAiModalOpen, setIsAiModalOpen] = useState<boolean>(false);
   const [isTourOpen, setIsTourOpen] = useState<boolean>(false);
   const [isDataUploadOpen, setIsDataUploadOpen] = useState<boolean>(false);
   const [isPitchDeckOpen, setIsPitchDeckOpen] = useState<boolean>(false);
-  const [showHeroStory, setShowHeroStory] = useState<boolean>(true);
+  const [isSearchOpen, setIsSearchOpen] = useState<boolean>(false);
 
-  // Core Ledger Reactive State
+  // Inspector Modals State
+  const [inspectedTxId, setInspectedTxId] = useState<string | null>(null);
+  const [inspectedAccountId, setInspectedAccountId] = useState<string | null>(null);
+
+  // Reactive Ledger State
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [transactions, setTransactions] = useState<EnrichedTransaction[]>([]);
-  const [caseData, setCaseData] = useState<InvestigationCase | null>(null);
+  const [cases, setCases] = useState<InvestigationCase[]>([]);
+  const [primaryCase, setPrimaryCase] = useState<InvestigationCase | null>(null);
   const [graph, setGraph] = useState<{ nodes: any[]; edges: any[] }>({ nodes: [], edges: [] });
+  const [auditLogs, setAuditLogs] = useState<AuditEvent[]>([]);
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'info' | 'warn' } | null>(null);
 
   // Sync state from ledgerInstance
   const refreshFromLedger = () => {
     const accs = ledgerInstance.getAccounts();
     const txs = ledgerInstance.getTransactions();
-    const c = ledgerInstance.getCase('CASE-2026-00041') || ledgerInstance.getCases()[0];
+    const cList = ledgerInstance.getCases();
+    const c = ledgerInstance.getCase('CASE-2026-00041') || cList[0];
     const g = ledgerInstance.getCaseGraph('CASE-2026-00041');
+    const audits = ledgerInstance.getAuditLogs();
 
     setAccounts([...accs]);
     setTransactions([...txs]);
-    if (c) setCaseData({ ...c });
+    setCases([...cList]);
+    if (c) setPrimaryCase({ ...c });
     setGraph({ ...g });
+    setAuditLogs([...audits]);
   };
 
   useEffect(() => {
     refreshFromLedger();
+  }, []);
+
+  // Global Ctrl+K hotkey for search command palette
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setIsSearchOpen(true);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
   const showToast = (message: string, type: 'success' | 'info' | 'warn' = 'success') => {
@@ -83,13 +114,13 @@ export default function App() {
     showToast(`Logged in as ${persona.name} (${persona.designation})`);
   };
 
-  // Re-run standard primary scenario
+  // Run standard primary 5-hop commingling scenario
   const handleRunDemoScenario = () => {
     ledgerInstance.reset(42);
     ledgerInstance.setProvenanceModel(provenanceModel);
     ledgerInstance.runPrimaryHackathonScenario();
     refreshFromLedger();
-    setActiveTab('investigator');
+    setActiveTab('overview');
     showToast('Demo Flow Initialized: ₹2,00,000 theft commingled with ₹5,00,000 clean funds at Mule A.');
   };
 
@@ -111,7 +142,7 @@ export default function App() {
     showToast(`Active attribution model updated to ${model}. Graph re-evaluated.`);
   };
 
-  // Execute or Recommend Partial Lien
+  // Execute or Recommend Surgical Partial Lien
   const handleLienAction = (accountId: string, amount: number) => {
     const acc = ledgerInstance.getAccount(accountId);
     if (!acc) return;
@@ -137,7 +168,7 @@ export default function App() {
   // Custom data ingestion handler
   const handleIngestionComplete = (result: IngestionResult) => {
     refreshFromLedger();
-    setActiveTab('investigator');
+    setActiveTab('investigate');
     showToast(`Custom Data Ingested: ${result.successful} transactions settled. Total Disputed: ₹${result.injectedDisputedAmount.toLocaleString('en-IN')}`);
   };
 
@@ -150,8 +181,26 @@ export default function App() {
     activeCaseId: 'CASE-2026-00041',
   };
 
+  const inspectedTransaction = transactions.find((t) => t.canonical.transactionId === inspectedTxId) || null;
+  const inspectedAccount = accounts.find((a) => a.id === inspectedAccountId) || null;
+
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-amber-500/30 selection:text-amber-200">
+    <AppShell
+      activeTab={activeTab}
+      setActiveTab={setActiveTab}
+      currentPersona={currentPersona}
+      onSelectPersona={handleSelectPersona}
+      provenanceModel={provenanceModel}
+      setProvenanceModel={handleModelChange}
+      selectedInstitution={selectedInstitution}
+      onRunDemoScenario={handleRunDemoScenario}
+      onResetLedger={handleResetLedger}
+      onOpenAiAssistant={() => setIsAiModalOpen(true)}
+      onStartTour={() => setIsTourOpen(true)}
+      onOpenDataUpload={() => setIsDataUploadOpen(true)}
+      onOpenPitchDeck={() => setIsPitchDeckOpen(true)}
+      onOpenSearch={() => setIsSearchOpen(true)}
+    >
       {/* Toast Notification */}
       {notification && (
         <div className="fixed bottom-6 right-6 z-50 bg-slate-900 border border-amber-500/50 text-slate-100 px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 font-mono text-xs animate-slideUp">
@@ -160,96 +209,134 @@ export default function App() {
         </div>
       )}
 
-      {/* Main Header */}
-      <Header
-        currentRole={currentRole}
-        setCurrentRole={setCurrentRole}
-        selectedInstitution={selectedInstitution}
-        setSelectedInstitution={setSelectedInstitution}
-        currentPersona={currentPersona}
-        onSelectPersona={handleSelectPersona}
-        provenanceModel={provenanceModel}
-        setProvenanceModel={handleModelChange}
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
-        onRunDemoScenario={handleRunDemoScenario}
-        onResetLedger={handleResetLedger}
-        onOpenAiAssistant={() => setIsAiModalOpen(true)}
-        onStartTour={() => setIsTourOpen(true)}
-        onOpenDataUpload={() => setIsDataUploadOpen(true)}
-        onOpenPitchDeck={() => setIsPitchDeckOpen(true)}
+      {/* Main View Router */}
+      {activeTab === 'overview' && (
+        <OverviewDashboardView
+          accounts={accounts}
+          transactions={transactions}
+          primaryCase={primaryCase}
+          provenanceModel={provenanceModel}
+          onNavigateTab={setActiveTab}
+          onSelectTransaction={(id) => setInspectedTxId(id)}
+          onSelectAccount={(id) => setInspectedAccountId(id)}
+          onStartTour={() => setIsTourOpen(true)}
+        />
+      )}
+
+      {activeTab === 'investigate' && primaryCase && (
+        <InvestigatorView
+          caseData={primaryCase}
+          graph={graph}
+          provenanceModel={provenanceModel}
+          onRecommendLien={handleLienAction}
+          onInspectTransaction={(id) => setInspectedTxId(id)}
+          onInspectAccountProfile={(id) => setInspectedAccountId(id)}
+        />
+      )}
+
+      {activeTab === 'transactions' && (
+        <TransactionsView
+          transactions={transactions}
+          onSelectTransaction={(id) => setInspectedTxId(id)}
+          onSelectAccount={(id) => setInspectedAccountId(id)}
+        />
+      )}
+
+      {activeTab === 'accounts' && (
+        <AccountsView
+          accounts={accounts}
+          onSelectAccount={(id) => setInspectedAccountId(id)}
+          onIssuePartialLien={handleLienAction}
+        />
+      )}
+
+      {activeTab === 'cases' && (
+        <CasesView
+          cases={cases}
+          onSelectCase={(id) => {
+            const found = cases.find((c) => c.id === id);
+            if (found) setPrimaryCase(found);
+          }}
+          onNavigateTab={setActiveTab}
+        />
+      )}
+
+      {activeTab === 'institutions' && (
+        <InstitutionsView
+          accounts={accounts}
+          transactions={transactions}
+          onSelectInstitution={(instId) => setSelectedInstitution(instId)}
+          onNavigateTab={setActiveTab}
+        />
+      )}
+
+      {activeTab === 'bank_ops' && (
+        <BankOpsView
+          currentInstitutionId={selectedInstitution}
+          currentRole={currentRole}
+          currentPersona={currentPersona}
+          onSwitchPersona={handleSelectPersona}
+          accounts={accounts}
+          transactions={transactions}
+          onApproveLien={handleLienAction}
+        />
+      )}
+
+      {activeTab === 'regulator' && (
+        <RegulatorView accounts={accounts} transactions={transactions} />
+      )}
+
+      {activeTab === 'raw_inspector' && (
+        <RawInspectorView transactions={transactions} />
+      )}
+
+      {activeTab === 'benchmarks' && <BenchmarkView />}
+
+      {activeTab === 'security' && (
+        <SecurityCenterView
+          auditLogs={auditLogs}
+          onNavigateTab={setActiveTab}
+          onRefreshLedger={refreshFromLedger}
+        />
+      )}
+
+      {activeTab === 'red_team' && <RedTeamSandbox />}
+
+      {activeTab === 'architecture' && <ArchitectureDocsView />}
+
+      {/* 3-Layer Transaction Inspector Modal */}
+      <TransactionDetailModal
+        transaction={inspectedTransaction}
+        isOpen={!!inspectedTxId}
+        onClose={() => setInspectedTxId(null)}
+        onInspectAccount={(accId) => setInspectedAccountId(accId)}
       />
 
-      {/* Hero Story Banner (Toggable / Sticky) */}
-      {showHeroStory && (
-        <div className="relative">
-          <HeroStorySection
-            onStartTour={() => setIsTourOpen(true)}
-            onOpenPitchDeck={() => setIsPitchDeckOpen(true)}
-            onOpenDataUpload={() => setIsDataUploadOpen(true)}
-            onJumpToTab={(tab) => {
-              setActiveTab(tab);
-              setShowHeroStory(false);
-            }}
-          />
-          <button
-            onClick={() => setShowHeroStory(false)}
-            className="absolute top-3 right-4 px-2 py-0.5 rounded text-[10px] bg-slate-800/80 hover:bg-slate-700 text-slate-400 font-mono"
-          >
-            Hide Overview
-          </button>
-        </div>
-      )}
+      {/* Account Profile Modal */}
+      <AccountProfileModal
+        account={inspectedAccount}
+        isOpen={!!inspectedAccountId}
+        onClose={() => setInspectedAccountId(null)}
+        transactions={transactions}
+        onSelectTransaction={(txId) => setInspectedTxId(txId)}
+        onIssuePartialLien={handleLienAction}
+      />
 
-      {!showHeroStory && (
-        <div className="bg-slate-900/40 border-b border-slate-800/60 px-4 py-1.5 flex items-center justify-between text-[11px] text-slate-400">
-          <span className="font-mono text-amber-400">TraceMesh Active Console</span>
-          <button
-            onClick={() => setShowHeroStory(true)}
-            className="text-amber-400 hover:underline font-mono text-[11px]"
-          >
-            Show Problem Overview & Pitch Banner
-          </button>
-        </div>
-      )}
-
-      {/* Main View Router */}
-      <main className="flex-1">
-        {activeTab === 'investigator' && caseData && (
-          <InvestigatorView
-            caseData={caseData}
-            graph={graph}
-            provenanceModel={provenanceModel}
-            onRecommendLien={handleLienAction}
-          />
-        )}
-
-        {activeTab === 'bank_ops' && (
-          <BankOpsView
-            currentInstitutionId={selectedInstitution}
-            currentRole={currentRole}
-            currentPersona={currentPersona}
-            onSwitchPersona={handleSelectPersona}
-            accounts={accounts}
-            transactions={transactions}
-            onApproveLien={handleLienAction}
-          />
-        )}
-
-        {activeTab === 'regulator' && (
-          <RegulatorView accounts={accounts} transactions={transactions} />
-        )}
-
-        {activeTab === 'raw_inspector' && (
-          <RawInspectorView transactions={transactions} />
-        )}
-
-        {activeTab === 'red_team' && <RedTeamSandbox />}
-
-        {activeTab === 'benchmarks' && <BenchmarkView />}
-
-        {activeTab === 'architecture' && <ArchitectureDocsView />}
-      </main>
+      {/* Global Search Command Palette (Ctrl + K) */}
+      <GlobalSearchModal
+        isOpen={isSearchOpen}
+        onClose={() => setIsSearchOpen(false)}
+        accounts={accounts}
+        transactions={transactions}
+        cases={cases}
+        onSelectAccount={(accId) => setInspectedAccountId(accId)}
+        onSelectTransaction={(txId) => setInspectedTxId(txId)}
+        onSelectCase={(cId) => {
+          const found = cases.find((c) => c.id === cId);
+          if (found) setPrimaryCase(found);
+        }}
+        onNavigateTab={setActiveTab}
+      />
 
       {/* AI Investigation Assistant Modal */}
       <AiInvestigatorModal
@@ -279,6 +366,6 @@ export default function App() {
         onClose={() => setIsPitchDeckOpen(false)}
         onStartInteractiveDemo={() => setIsTourOpen(true)}
       />
-    </div>
+    </AppShell>
   );
 }
